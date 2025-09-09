@@ -1,7 +1,6 @@
-# main.py
 # To run this app:
 # 1. Make sure you have Python installed.
-# 2. Install the necessary libraries: pip install streamlit pandas yfinance numpy
+# 2. Install the necessary libraries: pip install streamlit pandas yfinance numpy plotly
 # 3. Save this code as a Python file (e.g., app.py).
 # 4. Open your terminal or command prompt, navigate to the file's directory, and run: streamlit run app.py
 
@@ -9,35 +8,28 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import numpy as np
+import plotly.graph_objects as go
+from datetime import datetime
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="Quantamental GARP Screener",
-    page_icon="📈",
+    page_title="GARP Quantamental Screener",
+    page_icon="🎯",
     layout="wide"
 )
 
-# --- GLOBAL CONSTANTS ---
+# --- GLOBAL CONSTANTS & CONFIGURATION ---
 LARGE_CAP_THRESHOLD = 50000 * 1e7  # 50,000 Crores INR
 
-# --- NEW: Sector P/E Benchmarks for Single Stock Analyzer ---
-# These are general benchmarks. A true analysis would use more dynamic data.
+# --- SECTOR P/E BENCHMARKS ---
 SECTOR_PE_BENCHMARKS = {
-    'Financial Services': 25,
-    'Technology': 35,
-    'Healthcare': 40,
-    'Consumer Cyclical': 35,
-    'Industrials': 30,
-    'Basic Materials': 20,
-    'Energy': 15,
-    'Consumer Defensive': 40,
-    'Utilities': 20,
-    'Communication Services': 28,
-    'Real Estate': 30,
-    'Default': 25  # A fallback for sectors not listed
+    'Financial Services': 25, 'Technology': 35, 'Healthcare': 40,
+    'Consumer Cyclical': 35, 'Industrials': 30, 'Basic Materials': 20,
+    'Energy': 15, 'Consumer Defensive': 40, 'Utilities': 20,
+    'Communication Services': 28, 'Real Estate': 30, 'Default': 25
 }
 
-# --- Stock Universes ---
+# --- Stock Universes (Hardcoded for reliability) ---
 STOCK_UNIVERSES = {
     "Nifty 50": [
         'ADANIENT.NS', 'ADANIPORTS.NS', 'APOLLOHOSP.NS', 'ASIANPAINT.NS', 'AXISBANK.NS', 'BAJAJ-AUTO.NS',
@@ -49,406 +41,435 @@ STOCK_UNIVERSES = {
         'TCS.NS', 'TATACONSUM.NS', 'TATAMOTORS.NS', 'TATASTEEL.NS', 'TECHM.NS', 'TITAN.NS', 'ULTRACEMCO.NS',
         'WIPRO.NS'
     ],
-    "Nifty Next 50 ": [
-        "ABB.NS",
-        "ADANIENSOL.NS",
-        "ADANIGREEN.NS",
-        "ADANIPOWER.NS",
-        "AMBUJACEM.NS",
-        "BAJAJHLDNG.NS",
-        "BAJAJHFL.NS",
-        "BANKBARODA.NS",
-        "BPCL.NS",
-        "BRITANNIA.NS",
-        "BOSCHLTD.NS",
-        "CANBK.NS",
-        "CGPOWER.NS",
-        "CHOLAFIN.NS",
-        "DABUR.NS",
-        "DIVISLAB.NS",
-        "DLF.NS",
-        "DMART.NS",
-        "GAIL.NS",
-        "GODREJCP.NS",
-        "HAVELLS.NS",
-        "HAL.NS",
-        "ICICIGI.NS",
-        "ICICIPRULI.NS",
-        "INDHOTEL.NS",
-        "IOC.NS",
-        "INDIGO.NS",
-        "NAUKRI.NS",
-        "IRFC.NS",
-        "JINDALSTEL.NS",
-        "JSWENERGY.NS",
-        "LICI.NS",
-        "LODHA.NS",
-        "LTIM.NS",
-        "PIDILITIND.NS",
-        "PFC.NS",
-        "PNB.NS",
-        "RECLTD.NS",
-        "MOTHERSON.NS",
-        "SHREECEM.NS",
-        "SIEMENS.NS",
-        "TATAPOWER.NS",
-        "TORNTPHARM.NS",
-        "TVSMOTOR.NS",
-        "MCDOWELL-N.NS",  # United Spirits
-        "VBL.NS",
-        "VEDL.NS",
-        "ZYDUSLIFE.NS"
+    "Nifty Next 50": [
+        "ABB.NS", "ADANIENSOL.NS", "ADANIGREEN.NS", "ADANIPOWER.NS", "AMBUJACEM.NS", "BAJAJHLDNG.NS",
+        "BANKBARODA.NS", "BOSCHLTD.NS", "CANBK.NS", "CGPOWER.NS", "CHOLAFIN.NS", "COLPAL.NS", "DABUR.NS",
+        "DLF.NS", "DMART.NS", "GAIL.NS", "GODREJCP.NS", "HAVELLS.NS", "HAL.NS", "HDFCAMC.NS", "ICICIGI.NS",
+        "ICICIPRULI.NS", "IOC.NS", "INDIGO.NS", "NAUKRI.NS", "JINDALSTEL.NS", "JSWENERGY.NS", "LICI.NS",
+        "MARICO.NS", "MOTHERSON.NS", "PIDILITIND.NS", "PFC.NS", "PNB.NS", "RECLTD.NS", "SHREECEM.NS",
+        "SIEMENS.NS", "TATAPOWER.NS", "TORNTPHARM.NS", "TVSMOTOR.NS", "MCDOWELL-N.NS", "VBL.NS", "VEDL.NS",
+        "ZYDUSLIFE.NS", "ZOMATO.NS"
+    ],
+    "Nifty Small Cap": [
+        'AADHARHFC.NS', 'AARTIIND.NS', 'ACE.NS', 'AEGISLOG.NS', 'AFFLE.NS', 'AMARAJAELE.NS', 'AMBER.NS',
+        'ANANTRAJ.NS', 'ANGELONE.NS', 'ASTERDM.NS', 'ATUL.NS', 'BATAINDIA.NS', 'BEML.NS', 'BSOFT.NS',
+        'BLS.NS', 'BRIGADE.NS', 'CASTROLIND.NS', 'CESC.NS', 'CHAMBLFERT.NS', 'CAMS.NS', 'CREDITACC.NS',
+        'CROMPTON.NS', 'CYIENT.NS', 'DATAPATTNS.NS', 'DELHIVERY.NS', 'DEVYANI.NS', 'LALPATHLAB.NS',
+        'FSL.NS', 'FIVESTAR.NS', 'GRSE.NS', 'GODIGIT.NS', 'GODFRYPHLP.NS', 'GESHIP.NS', 'GSPL.NS',
+        'HBLPOWER.NS', 'HFCL.NS', 'HSCL.NS', 'HINDCOPPER.NS', 'IDBI.NS', 'IFCI.NS', 'IIFL.NS',
+        'INDIAMART.NS', 'IEX.NS', 'INOXWIND.NS', 'IRCON.NS', 'ITI.NS', 'JBMA.NS', 'JWL.NS', 'KPIL.NS',
+        'KARURVYSYA.NS', 'KAYNES.NS', 'KEC.NS', 'KFINTECH.NS', 'LAURUSLABS.NS', 'MGL.NS', 'MANAPPURAM.NS',
+        'MCX.NS', 'NH.NS', 'NATCOPHARM.NS', 'NAVINFLUOR.NS', 'NBCC.NS', 'NCC.NS', 'NEULANDLAB.NS', 'NEWGEN.NS',
+        'NUVAMA.NS', 'PCBL.NS', 'PGEL.NS', 'PEL.NS', 'PPLPHARMA.NS', 'PNBHOUSING.NS', 'POONAWALLA.NS',
+        'PVRINOX.NS', 'RADICO.NS', 'RAILTEL.NS', 'RKFORGE.NS', 'REDINGTON.NS', 'RPOWER.NS', 'RITES.NS',
+        'SHYAMMETL.NS', 'SIGNATURE.NS', 'SONATSOFTW.NS', 'SWANENERGY.NS', 'TATACHEM.NS', 'TTML.NS',
+        'TEJASNET.NS', 'RAMCOCEM.NS', 'TITAGARH.NS', 'TRIDENT.NS', 'TRITURBINE.NS', 'WELCORP.NS',
+        'WELSPUNLIV.NS', 'ZENTEC.NS', 'ZENSARTECH.NS'
     ]
 }
 
 
-# --- Custom Technical Indicator Functions ---
-def calculate_rsi(data, window=14):
-    delta = data['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).ewm(com=window - 1, adjust=False).mean()
-    loss = (-delta.where(delta < 0, 0)).ewm(com=window - 1, adjust=False).mean()
+# --- Technical Indicator & Charting Functions ---
+def calculate_rsi(data, period=14):
+    delta = data.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
     rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    return 100 - (100 / (1 + rs))
 
 
-def calculate_adx(data, window=14):
-    df = data.copy()
-    df['tr'] = np.maximum(df['High'] - df['Low'],
-                          np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
-    df['plus_dm'] = np.where((df['High'] - df['High'].shift(1)) > (df['Low'].shift(1) - df['Low']),
-                             np.maximum(df['High'] - df['High'].shift(1), 0), 0)
-    df['minus_dm'] = np.where((df['Low'].shift(1) - df['Low']) > (df['High'] - df['High'].shift(1)),
-                              np.maximum(df['Low'].shift(1) - df['Low'], 0), 0)
-    df['atr'] = df['tr'].ewm(com=window - 1, adjust=False).mean()
-    df['plus_di'] = 100 * (df['plus_dm'].ewm(com=window - 1, adjust=False).mean() / df['atr'])
-    df['minus_di'] = 100 * (df['minus_dm'].ewm(com=window - 1, adjust=False).mean() / df['atr'])
-    df['dx'] = 100 * (abs(df['plus_di'] - df['minus_di']) / (df['plus_di'] + df['minus_di']).replace(0, 0.0001))
-    adx = df['dx'].ewm(com=window - 1, adjust=False).mean()
-    return adx
+def plot_technical_chart(hist):
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=hist.index, y=hist['bollinger_upper'], name='Upper Band', line=dict(color='lightgray', width=1)))
+    fig.add_trace(
+        go.Scatter(x=hist.index, y=hist['bollinger_lower'], name='Lower Band', line=dict(color='lightgray', width=1),
+                   fill='tonexty', fillcolor='rgba(211,211,211,0.2)'))
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name='Price', line=dict(color='blue', width=2)))
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['ema_50'], name='50-Day EMA',
+                             line=dict(color='purple', width=1.5, dash='dash')))
+    fig.add_trace(
+        go.Scatter(x=hist.index, y=hist['ema_200'], name='200-Day EMA', line=dict(color='red', width=1.5, dash='dash')))
+    fig.update_layout(title='Technical Price Chart with Bollinger Bands', yaxis_title='Price (INR)',
+                      legend_title='Indicators', template='plotly_white')
+    return fig
 
 
-# --- Caching Data ---
-@st.cache_data(ttl=3600)  # Cache data for 1 hour
-def get_stock_data(ticker_symbol, is_single_stock=False):
+def plot_fundamental_chart(financials):
+    if 'Basic EPS' in financials.index:
+        eps = financials.loc['Basic EPS'].dropna().sort_index()
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=eps.index.year, y=eps.values, name='Basic EPS', marker_color='green'))
+        fig.update_layout(title='Annual Earnings Per Share (EPS)', yaxis_title='Amount (INR)', xaxis_title='Year',
+                          template='plotly_white')
+        return fig
+    return None
+
+
+# --- Caching & Data Fetching ---
+@st.cache_data(ttl=3600)
+def get_stock_data(ticker_symbol, period="2y"):
     try:
         stock = yf.Ticker(ticker_symbol)
         info = stock.info
-        hist = stock.history(period="2y")
+        hist = stock.history(period=period)
         financials = stock.financials
-
         if hist.empty or len(hist) < 252: return None
 
-        # --- Fundamental Data ---
         market_cap = info.get('marketCap')
         trailing_pe = info.get('trailingPE')
-        profit_margins = info.get('profitMargins')
-        sector = info.get('sector', 'N/A')  # Get sector for dynamic P/E
-        net_income_growth = None
-        if not financials.empty and 'Net Income' in financials.index and len(financials.columns) >= 2:
-            net_income_last_year = financials.loc['Net Income'].iloc[1]
-            net_income_this_year = financials.loc['Net Income'].iloc[0]
-            if net_income_last_year and net_income_last_year > 0:
-                net_income_growth = (net_income_this_year - net_income_last_year) / net_income_last_year
+        eps_cagr_3y = None
+        peg_ratio = None
+        if not financials.empty and 'Basic EPS' in financials.index and len(financials.columns) >= 4:
+            eps_series = financials.loc['Basic EPS']
+            end_eps = eps_series.iloc[0]
+            start_eps = eps_series.iloc[3]
+            if start_eps and start_eps > 0 and end_eps > 0:
+                eps_cagr_3y = ((end_eps / start_eps) ** (1 / 3)) - 1
+        if trailing_pe and trailing_pe > 0 and eps_cagr_3y and eps_cagr_3y > 0:
+            peg_ratio = trailing_pe / (eps_cagr_3y * 100)
+        eps_growth_1y = None
+        if not financials.empty and 'Basic EPS' in financials.index and len(financials.columns) >= 2:
+            eps_this_year = financials.loc['Basic EPS'].iloc[0]
+            eps_last_year = financials.loc['Basic EPS'].iloc[1]
+            if eps_last_year and eps_last_year > 0:
+                eps_growth_1y = (eps_this_year - eps_last_year) / eps_last_year
+
         momentum_6m = hist['Close'].pct_change(periods=126).iloc[-1] if len(hist) > 126 else None
+        hist['ema_50'] = hist['Close'].ewm(span=50, adjust=False).mean()
+        hist['ema_200'] = hist['Close'].ewm(span=200, adjust=False).mean()
+        hist['sma_20'] = hist['Close'].rolling(window=20).mean()
+        hist['std_20'] = hist['Close'].rolling(window=20).std()
+        hist['bollinger_upper'] = hist['sma_20'] + (hist['std_20'] * 2)
+        hist['bollinger_lower'] = hist['sma_20'] - (hist['std_20'] * 2)
+        hist['bollinger_width'] = (hist['bollinger_upper'] - hist['bollinger_lower']) / hist['sma_20']
 
-        # --- Technical Data ---
-        current_price = hist['Close'].iloc[-1]
-        sma_200 = hist['Close'].rolling(window=200).mean().iloc[-1]
-        sma_50 = hist['Close'].rolling(window=50).mean().iloc[-1]
-        current_rsi = calculate_rsi(hist).iloc[-1]
-        current_adx = calculate_adx(hist).iloc[-1]
-        current_volume = hist['Volume'].iloc[-1]
-        avg_volume_50d = hist['Volume'].rolling(window=50).mean().iloc[-1]
-
-        required_metrics = [market_cap, trailing_pe, profit_margins, net_income_growth, momentum_6m]
-        if not is_single_stock and any(v is None for v in required_metrics):
-            return None
-
+        technicals = {
+            "current_price": hist['Close'].iloc[-1], "yearly_high": hist['High'][-252:].max(),
+            "ema_50": hist['ema_50'].iloc[-1], "ema_200": hist['ema_200'].iloc[-1],
+            "rsi_14": calculate_rsi(hist['Close']).iloc[-1],
+            "avg_volume_20d": hist['Volume'].rolling(window=20).mean().iloc[-1],
+            "last_volume": hist['Volume'].iloc[-1], "bollinger_width": hist['bollinger_width'].iloc[-1],
+            "is_squeezing": hist['bollinger_width'].iloc[-1] <
+                            hist['bollinger_width'].rolling(window=126).quantile(0.10).iloc[-1]
+        }
         return {
             "ticker": ticker_symbol, "info": info,
             "fundamentals": {
-                "market_cap": market_cap, "net_income_growth": net_income_growth,
-                "trailing_pe": trailing_pe, "profit_margins": profit_margins, "momentum_6m": momentum_6m,
-                "sector": sector
-            },
-            "technicals": {
-                "current_price": current_price, "sma_200": sma_200, "sma_50": sma_50,
-                "rsi_14": current_rsi, "adx_14": current_adx,
-                "current_volume": current_volume, "avg_volume_50d": avg_volume_50d
-            }
+                "market_cap": market_cap, "eps_growth_1y": eps_growth_1y, "eps_cagr_3y": eps_cagr_3y,
+                "trailing_pe": trailing_pe, "peg_ratio": peg_ratio, "momentum_6m": momentum_6m,
+                "sector": info.get('sector', 'Default'), "company_name": info.get('shortName', ticker_symbol)
+            }, "technicals": technicals, "raw_hist": hist, "raw_financials": financials
         }
-    except Exception:
+    except Exception as e:
         return None
 
 
-# --- Scoring Logic ---
-def calculate_screener_scores(all_data):
-    df = pd.DataFrame([d['fundamentals'] for d in all_data])
-    df['ticker'] = [d['ticker'] for d in all_data]
-
-    df['market_cap'].fillna(0, inplace=True)
-    df['net_income_growth'].fillna(0, inplace=True)
-    df['trailing_pe'].fillna(999, inplace=True)
-    df['profit_margins'].fillna(0, inplace=True)
-    df['momentum_6m'].fillna(0, inplace=True)
-
-    # Calculate percentile ranks for each of the four factors
-    df['growth_rank'] = df['net_income_growth'].rank(pct=True)
-    df['value_rank'] = df['trailing_pe'].rank(pct=True, ascending=False)
-    df['quality_rank'] = df['profit_margins'].rank(pct=True)
-    df['momentum_rank'] = df['momentum_6m'].rank(pct=True)
-
-    def calculate_dynamic_score(row):
-        if row['market_cap'] > LARGE_CAP_THRESHOLD:  # Large Cap Weights
-            return (row['quality_rank'] * 40) + (row['value_rank'] * 30) + \
-                (row['growth_rank'] * 15) + (row['momentum_rank'] * 15)
-        else:  # Mid & Small Cap Weights
-            return (row['growth_rank'] * 40) + (row['momentum_rank'] * 30) + \
-                (row['value_rank'] * 15) + (row['quality_rank'] * 15)
-
-    df['fundamental_score'] = df.apply(calculate_dynamic_score, axis=1)
-
-    scored_results = []
-    for data in all_data:
-        ticker_scores = df[df['ticker'] == data['ticker']].iloc[0]
-        scored_results.append({
-            "ticker": data['ticker'], "company_name": data['info'].get('shortName', 'N/A'),
-            "fundamental_score": round(ticker_scores['fundamental_score']),
-            **data['fundamentals'], **data['technicals']
-        })
-    return scored_results
+# --- UNIFIED SCORING LOGIC ---
+def calculate_fundamental_score(fund_data):
+    scores = {}
+    growth = fund_data.get('eps_growth_1y')
+    if growth is not None:
+        if growth > 0.25:
+            scores['growth'] = 100
+        elif growth > 0.15:
+            scores['growth'] = 80
+        elif growth > 0.05:
+            scores['growth'] = 60
+        else:
+            scores['growth'] = 20
+    else:
+        scores['growth'] = 0
+    pe = fund_data.get('trailing_pe')
+    sector = fund_data.get('sector', 'Default')
+    benchmark_pe = SECTOR_PE_BENCHMARKS.get(sector, SECTOR_PE_BENCHMARKS['Default'])
+    if pe is not None and pe > 0:
+        if pe < 0.8 * benchmark_pe:
+            scores['value'] = 100
+        elif pe < benchmark_pe:
+            scores['value'] = 80
+        elif pe < 1.2 * benchmark_pe:
+            scores['value'] = 60
+        else:
+            scores['value'] = 20
+    else:
+        scores['value'] = 0
+    peg = fund_data.get('peg_ratio')
+    if peg is not None:
+        if peg < 1.0:
+            scores['garp'] = 100
+        elif peg < 1.5:
+            scores['garp'] = 80
+        elif peg < 2.0:
+            scores['garp'] = 60
+        else:
+            scores['garp'] = 20
+    else:
+        scores['garp'] = 0
+    momentum = fund_data.get('momentum_6m')
+    if momentum is not None:
+        if momentum > 0.30:
+            scores['momentum'] = 100
+        elif momentum > 0.15:
+            scores['momentum'] = 80
+        elif momentum > 0:
+            scores['momentum'] = 60
+        else:
+            scores['momentum'] = 20
+    else:
+        scores['momentum'] = 0
+    market_cap = fund_data.get('market_cap', 0)
+    if market_cap and market_cap > LARGE_CAP_THRESHOLD:
+        final_score = (scores.get('garp', 0) * 0.40) + (scores.get('value', 0) * 0.30) + (
+                    scores.get('growth', 0) * 0.15) + (scores.get('momentum', 0) * 0.15)
+    else:
+        final_score = (scores.get('growth', 0) * 0.40) + (scores.get('momentum', 0) * 0.30) + (
+                    scores.get('value', 0) * 0.15) + (scores.get('garp', 0) * 0.15)
+    return int(final_score)
 
 
 def calculate_technical_score(tech_data):
-    score = 0
-    if tech_data['current_price'] > tech_data['sma_200']: score += 30
-    if tech_data['current_price'] > tech_data['sma_50']: score += 10
-    if 55 <= tech_data['rsi_14'] <= 75:
-        score += 30
-    elif 40 <= tech_data['rsi_14'] < 55:
-        score += 15
-    if tech_data['adx_14'] > 25: score += 20
-    if tech_data['current_volume'] > tech_data['avg_volume_50d']: score += 10
-    return score
+    scores = {}
+    price = tech_data.get('current_price')
+    ema_50 = tech_data.get('ema_50')
+    ema_200 = tech_data.get('ema_200')
 
+    if price is None or ema_50 is None or ema_200 is None:
+        return 0
 
-def generate_description(stock):
-    fund_score, tech_score = stock['fundamental_score'], stock['technical_score']
-    fund_summary = f"**Fundamental Analysis:** With a score of **{fund_score}**, {stock['company_name']} shows "
-    if fund_score > 80:
-        fund_summary += "an **elite profile**, ranking in the top tier of its peers."
-    elif fund_score >= 65:
-        fund_summary += "a **strong profile**, indicating a solid blend of factors."
+    is_uptrend = price > ema_50 and ema_50 > ema_200
+    if is_uptrend:
+        scores['trend'] = 100
+    elif price > ema_200:
+        scores['trend'] = 60
     else:
-        fund_summary += "an **average profile**, not meeting the high standards of the model."
-    tech_summary = f"\n\n**Technical Analysis (Score: {tech_score}):** "
-    if stock['current_price'] > stock['sma_50'] and stock['current_price'] > stock['sma_200']:
-        tech_summary += "The stock is in a **healthy short-term and long-term uptrend**. "
-    elif stock['current_price'] > stock['sma_200']:
-        tech_summary += "The stock is in a **long-term uptrend but facing short-term weakness**. "
+        scores['trend'] = 10
+
+    pullback_proximity = abs(price - ema_50) / price if price > 0 else 1
+    if pullback_proximity < 0.02:
+        pullback_score = 100
+    elif pullback_proximity < 0.05:
+        pullback_score = 80
     else:
-        tech_summary += "The stock is currently in a **downtrend**. "
-    if stock['rsi_14'] > 55:
-        tech_summary += f"Momentum is **strong** (RSI: {stock['rsi_14']:.2f}). "
+        pullback_score = 20
+
+    squeeze_score = 100 if tech_data.get('is_squeezing', False) else 20
+    scores['setup'] = max(pullback_score, squeeze_score)
+
+    volume_ratio = 0
+    avg_vol = tech_data.get('avg_volume_20d')
+    last_vol = tech_data.get('last_volume')
+    if avg_vol and last_vol and avg_vol > 0:
+        volume_ratio = last_vol / avg_vol
+
+    if volume_ratio > 1.5:
+        volume_score = 100
+    elif volume_ratio > 1.0:
+        volume_score = 80
     else:
-        tech_summary += f"Momentum is **fading or neutral** (RSI: {stock['rsi_14']:.2f}). "
-    if stock['adx_14'] > 25:
-        tech_summary += f"The trend has **strong conviction** (ADX: {stock['adx_14']:.2f})."
+        volume_score = 40
+
+    rsi = tech_data.get('rsi_14')
+    if rsi is not None and 45 < rsi < 70:
+        rsi_score = 100
+    elif rsi is not None and 40 < rsi < 75:
+        rsi_score = 70
     else:
-        tech_summary += f"However, the trend **lacks strong conviction** (ADX: {stock['adx_14']:.2f})."
-    verdict = "\n\n**Verdict:** "
-    if fund_score >= 65 and tech_score >= 65:
-        verdict += "This is a **high-conviction candidate**, showing strong fundamentals and technicals."
-    elif fund_score >= 65:
-        verdict += "This is a **fundamentally strong company** on a watchlist for technical improvement."
-    else:
-        verdict += "This stock **does not meet the combined criteria** for immediate consideration."
-    return fund_summary + tech_summary + verdict
+        rsi_score = 20
+
+    scores['confirmation'] = (volume_score + rsi_score) / 2
+    final_score = (scores.get('trend', 0) * 0.40) + (scores.get('setup', 0) * 0.40) + (
+                scores.get('confirmation', 0) * 0.20)
+    return int(final_score)
 
 
-# --- UI & Main Logic ---
-st.title("📈 The Quantamental GARP Screener")
-st.markdown("A tool to find high-quality growth stocks at a reasonable price (GARP) with strong momentum.")
+# --- UI Rendering Functions ---
+def display_stock_analysis(stock_data):
+    st.markdown("---")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.metric(f"**{stock_data['fundamentals']['company_name']} ({stock_data['ticker']})**",
+                  f"₹{stock_data['technicals']['current_price']:.2f}")
+        st.markdown(f"**Fundamental: {stock_data['fundamental_score']} / 100**")
+        st.markdown(f"**Technical: {stock_data['technical_score']} / 100**")
+        if stock_data.get('is_high_conviction'): st.markdown(
+            "<h5><span style='color:green;'>🎯 High Conviction</span></h5>", unsafe_allow_html=True)
+    with col2:
+        fund_score = stock_data['fundamental_score']
+        tech_score = stock_data['technical_score']
+        fund_summary = f"**Fundamental Analysis (Score: {fund_score}):** "
+        if fund_score > 80:
+            fund_summary += "Shows an **elite GARP** profile, with strong EPS growth at a reasonable price."
+        elif fund_score >= 65:
+            fund_summary += "Shows a **strong GARP** profile."
+        else:
+            fund_summary += "The fundamental GARP profile is currently sub-optimal."
+        tech_summary = f"\n\n**Technical Analysis (Score: {tech_score}):** "
+        if tech_score > 80:
+            tech_summary += "The stock is showing an **excellent technical setup**, indicating a potential entry point in a healthy uptrend."
+        elif tech_score >= 65:
+            tech_summary += "The stock is showing a **favorable technical setup**, such as a pullback to support or a volatility contraction."
+        else:
+            tech_summary += "The technical picture does not currently present a clear entry point."
+        verdict = "\n\n**Verdict:** "
+        if fund_score >= 65 and tech_score >= 65:
+            verdict += "🎯 This is a **high-conviction GARP candidate** with a favorable entry setup."
+        elif fund_score >= 65:
+            verdict += "👀 A **fundamentally strong GARP company** to watch for a better technical entry."
+        else:
+            verdict += "❌ This stock **does not meet the combined GARP criteria**."
+        st.info(fund_summary + tech_summary + verdict)
 
-# --- Initialize session_state ---
-if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = None
+    with st.expander("View Detailed Metrics & Charts"):
+        fund, tech = stock_data['fundamentals'], stock_data['technicals']
+        fund_col, tech_col = st.columns(2)
+        with fund_col:
+            st.markdown("**Fundamental Data**")
+            st.text(f"Market Cap: ₹{(fund.get('market_cap') or 0) / 1e7:,.0f} Cr",
+                    help="The total market value of a company's outstanding shares. Market Cap = Current Share Price × Total Number of Shares.")
+            st.text(f"Trailing P/E: {fund.get('trailing_pe'):.2f}" if fund.get(
+                'trailing_pe') is not None else "Trailing P/E: N/A",
+                    help="Price-to-Earnings ratio. A common metric for valuation. It is calculated by dividing the stock's current price by its earnings per share (EPS) over the last 12 months.")
+            st.text(f"1Y EPS Growth: {fund.get('eps_growth_1y', 0) * 100:.2f}%" if fund.get(
+                'eps_growth_1y') is not None else "1Y EPS Growth: N/A",
+                    help="The percentage increase in a company's Earnings Per Share over the last year. A key indicator of short-term growth.")
+            st.text(f"3Y EPS CAGR: {fund.get('eps_cagr_3y', 0) * 100:.2f}%" if fund.get(
+                'eps_cagr_3y') is not None else "3Y EPS CAGR: N/A",
+                    help="Compound Annual Growth Rate of EPS over 3 years. This measures the smoothed, long-term earnings growth.")
+            st.text(f"PEG Ratio (3Y CAGR): {fund.get('peg_ratio'):.2f}" if fund.get(
+                'peg_ratio') is not None else "PEG Ratio (3Y CAGR): N/A",
+                    help="Price/Earnings to Growth ratio. Compares the P/E ratio to the 3-year earnings growth rate. A value under 1.0 is often considered favorable, suggesting the stock price is reasonable relative to its growth.")
+            st.text(f"6M Momentum: {fund.get('momentum_6m', 0) * 100:.2f}%" if fund.get(
+                'momentum_6m') is not None else "6M Momentum: N/A",
+                    help="The stock's price change over the last 6 months (approximately 126 trading days).")
+        with tech_col:
+            st.markdown("**Technical Data**")
+            price = tech.get('current_price', 0)
+            ema_50 = tech.get('ema_50', 0)
+            ema_200 = tech.get('ema_200', 0)
+            is_uptrend = price > ema_50 and ema_50 > ema_200
+            is_long_term_ok = price > ema_200
+            trend_status = "Healthy Uptrend" if is_uptrend else "Long-Term Positive" if is_long_term_ok else "Downtrend"
+            st.text(f"Trend Status: {trend_status}",
+                    help="Indicates the health of the current trend based on the alignment of the price, 50-day EMA, and 200-day EMA.")
+            st.text(f"Price vs 50D EMA: {((price / ema_50) - 1) * 100:.2f}%" if ema_50 > 0 else "N/A",
+                    help="How far the current price is from the 50-day Exponential Moving Average. A value near 0% indicates a pullback to a key support/resistance level.")
+            st.text(f"Bollinger Width: {tech.get('bollinger_width', 0):.3f}",
+                    help="Measures the volatility of the stock. A lower value indicates the bands are tightening, which can signal a 'squeeze' before a significant price move.")
+            volume_ratio = (tech['last_volume'] / tech['avg_volume_20d']) if tech.get('avg_volume_20d') and tech.get(
+                'last_volume') and tech['avg_volume_20d'] > 0 else 0
+            st.text(f"Volume vs 20D Avg: {volume_ratio:.2f}x",
+                    help="Compares the last day's trading volume to the 20-day average volume. A value > 1.0 indicates higher-than-average interest.")
+            st.text(f"RSI (14-day): {tech.get('rsi_14'):.2f}",
+                    help="Relative Strength Index. A momentum indicator measuring the speed and change of price movements. Values > 70 are considered overbought, and < 30 are oversold. This model favors values between 45-70.")
 
-with st.expander("⚠️ Disclaimer"):
-    st.warning(
-        "This tool is for educational purposes only and is not financial advice. Data is from Yahoo Finance and may have inaccuracies.")
+        st.plotly_chart(plot_technical_chart(stock_data['raw_hist']), use_container_width=True)
+        if 'raw_financials' in stock_data and not stock_data['raw_financials'].empty:
+            chart = plot_fundamental_chart(stock_data['raw_financials'])
+            if chart: st.plotly_chart(chart, use_container_width=True)
 
-with st.expander("Scoring Guide"):
-    st.markdown("""
-    **Fundamental Score (0-100): How good is the company?**
-    This score is dynamically weighted based on the company's size:
-    -   **Large Caps (> ₹50,000 Cr):** Focuses on stability.
-        -   *Quality (40%):* Profit Margin
-        -   *Value (30%):* Trailing P/E Ratio
-        -   *Growth (15%):* Net Income Growth
-        -   *Momentum (15%):* 6-Month Price Momentum
-    -   **Mid & Small Caps (< ₹50,000 Cr):** Focuses on upside potential.
-        -   *Growth (40%):* Net Income Growth
-        -   *Momentum (30%):* 6-Month Price Momentum
-        -   *Value (15%):* Trailing P/E Ratio
-        -   *Quality (15%):* Profit Margin
 
-    **Technical Score (0-100): Is now a good time to buy?**
-    This score is based on trend, momentum, and volume indicators.
+# --- Main Application ---
+st.title("🎯 GARP Quantamental Screener")
+st.markdown("A disciplined model to find high-quality stocks with strong technical setups.")
+with st.expander("⚠️ Important Disclaimer & Data Information", expanded=True):
+    st.warning("""
+    **This is an educational tool, not financial advice.**
+    - All analysis is based on a predefined quantitative model and publicly available data. It does not constitute a recommendation to buy or sell any security.
+    - The data is sourced from Yahoo Finance and may have inaccuracies or delays. Always verify data from multiple sources.
+    - **Always do your own research** and consult with a qualified financial advisor before making any investment decisions.
     """)
 
-# --- Screener Section ---
-st.header("1. Stock Screener")
-selected_universe = st.selectbox("Select Stock Universe", options=list(STOCK_UNIVERSES.keys()))
+# --- UI Layout with Tabs ---
+about_tab, screener_tab, analyzer_tab = st.tabs(["About / How to Use", "Screener", "Single Stock Analyzer"])
 
-if st.button("🚀 Run Screener", type="primary"):
-    with st.spinner(f"Analyzing {len(STOCK_UNIVERSES[selected_universe])} stocks..."):
-        all_stock_data = [d for d in (get_stock_data(t) for t in STOCK_UNIVERSES[selected_universe]) if d]
-    if not all_stock_data:
-        st.error("Could not fetch sufficient data for the selected stocks.")
-        st.session_state.watchlist = None  # Clear previous results
-    else:
-        results = calculate_screener_scores(all_stock_data)
-        for r in results:
-            r['technical_score'] = calculate_technical_score(r)
-            r['combined_score'] = r['fundamental_score'] + r['technical_score']
-            r['is_high_conviction'] = r['fundamental_score'] >= 65 and r['technical_score'] >= 65
+with about_tab:
+    st.header("Welcome to the GARP Quantamental Screener!")
+    st.markdown("""
+    This tool is designed for investors who follow the **Growth at a Reasonable Price (GARP)** strategy. It combines quantitative fundamental analysis with technical analysis to identify potentially strong investment opportunities.
 
-        all_results_sorted = sorted(results, key=lambda x: (x['is_high_conviction'], x['combined_score']), reverse=True)
+    ### What is Quantamental Analysis?
+    It's a hybrid approach that uses quantitative models (the **Quant** part) to analyze fundamental financial data (the **amental** part). Our model scores stocks on both their fundamental quality and their technical setup.
 
-        st.session_state.watchlist = all_results_sorted
+    ### How the Scoring Works
+    Every stock is graded on two distinct models, each out of 100:
 
-# --- Display Results if they exist in session_state ---
-if st.session_state.watchlist is not None:
-    watchlist_sorted = st.session_state.watchlist
-    st.success(f"Analysis complete! Showing top stocks from the {len(watchlist_sorted)} analyzed stocks.")
+    **1. The Fundamental Score (The "What to Buy"):**
+    This score measures the quality and value of the underlying business. It's based on:
+    - **Growth:** Recent (1-Year) earnings per share (EPS) growth.
+    - **Value:** The stock's P/E ratio compared to its industry peers.
+    - **GARP Quality:** The PEG ratio, which balances the P/E ratio against long-term (3-Year) earnings growth. A low PEG is highly desirable.
+    - **Momentum:** The stock's price performance over the last 6 months.
 
-    if not watchlist_sorted:
-        st.warning("No stocks were found in the selected universe.")
-    else:
-        num_to_display = st.number_input(
-            label="Select how many top stocks to display",
-            min_value=1,
-            max_value=len(watchlist_sorted),
-            value=min(15, len(watchlist_sorted)),
-            step=1,
-            help=f"You can display up to {len(watchlist_sorted)} qualifying stocks.",
-            key='stock_display_count'
-        )
+    **2. The Technical Score (The "When to Buy"):**
+    This score evaluates the current price chart to find a favorable entry point. It prioritizes:
+    - **Trend:** Is the stock in a healthy, established uptrend?
+    - **Setup:** Is there a low-risk entry opportunity right now? The model favors pullbacks to the 50-day moving average or periods of low volatility.
+    - **Confirmation:** Is there supporting evidence, like above-average volume or healthy momentum (RSI)?
 
-        for stock in watchlist_sorted[:num_to_display]:
-            st.markdown("---")
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                st.metric(f"**{stock['company_name']} ({stock['ticker']})**", f"₹{stock['current_price']:.2f}")
-                st.markdown(f"**Fundamental Score: {stock['fundamental_score']} / 100**")
-                st.markdown(f"**Technical Score: {stock['technical_score']} / 100**")
-                if stock['is_high_conviction']:
-                    st.markdown("🎯 **High Conviction**")
-            with col2:
-                st.markdown("**Model Summary & Interpretation:**")
-                st.info(generate_description(stock))
-                with st.expander("View Detailed Metrics"):
-                    fund_col, tech_col = st.columns(2)
-                    with fund_col:
-                        st.markdown("**Fundamental Data**")
-                        st.text(f"Market Cap: ₹{(stock['market_cap'] or 0) / 1e7:,.0f} Cr")
-                        st.text(f"Net Income Growth (YoY): {stock['net_income_growth'] * 100:.2f}%" if stock[
-                                                                                                           'net_income_growth'] is not None else "N/A")
-                        st.text(f"Trailing P/E Ratio: {stock['trailing_pe']:.2f}" if stock[
-                                                                                         'trailing_pe'] is not None else "N/A")
-                        st.text(f"Profit Margins: {stock['profit_margins'] * 100:.2f}%" if stock[
-                                                                                               'profit_margins'] is not None else "N/A")
-                        st.text(f"6-Month Momentum: {stock['momentum_6m'] * 100:.2f}%" if stock[
-                                                                                              'momentum_6m'] is not None else "N/A")
-                    with tech_col:
-                        st.markdown("**Technical Data**")
-                        st.text(f"Price vs 50D SMA: {'Above' if stock['current_price'] > stock['sma_50'] else 'Below'}")
-                        st.text(
-                            f"Price vs 200D SMA: {'Above' if stock['current_price'] > stock['sma_200'] else 'Below'}")
-                        st.text(f"14D RSI: {stock['rsi_14']:.2f}")
-                        st.text(f"14D ADX: {stock['adx_14']:.2f}")
-                        st.text(
-                            f"Volume vs 50D Avg: {'High' if stock['current_volume'] > stock['avg_volume_50d'] else 'Low'}")
+    ### How to Use This Tool
+    1.  **Start with the Screener Tab:** Select a stock universe (e.g., Nifty Small Cap) and run the screener. This will give you a ranked list of all stocks, with the highest-scoring "High Conviction" candidates at the top.
+    2.  **Analyze Promising Stocks:** When you find an interesting stock in the screener, go to the **Single Stock Analyzer** tab.
+    3.  **Dive Deeper:** Enter the stock's ticker to get a detailed report, including all the specific metrics, charts, and a plain-English verdict to help with your own research process.
+    """)
 
-# --- Single Stock Analyzer Section ---
-st.header("2. Single Stock Analyzer")
-user_ticker = st.text_input("Enter a single stock ticker (e.g., TATAMOTORS.NS)").upper()
+with screener_tab:
+    st.header("Screen a Stock Universe")
+    available_indices = ["Nifty 50", "Nifty Next 50", "Nifty Small Cap"]
+    selected_universe_name = st.selectbox("Select Stock Universe", options=available_indices, key="screener_universe")
+    if st.button("🚀 Run GARP Screener", type="primary"):
+        tickers_to_scan = STOCK_UNIVERSES.get(selected_universe_name, [])
+        with st.spinner(f"Analyzing {len(tickers_to_scan)} stocks..."):
+            all_results = []
+            progress_bar = st.progress(0, "Analyzing...")
+            for i, ticker in enumerate(tickers_to_scan):
+                data = get_stock_data(ticker)
+                if data:
+                    data['fundamental_score'] = calculate_fundamental_score(data['fundamentals'])
+                    data['technical_score'] = calculate_technical_score(data['technicals'])
+                    data['is_high_conviction'] = data['fundamental_score'] >= 65 and data['technical_score'] >= 65
+                    all_results.append(data)
+                progress_bar.progress((i + 1) / len(tickers_to_scan), f"Analyzing {ticker}")
+            st.session_state.screener_results = sorted(all_results, key=lambda x: (
+            x.get('is_high_conviction', False), x.get('fundamental_score', 0) + x.get('technical_score', 0)),
+                                                       reverse=True)
 
-if st.button("🔍 Analyze Stock", key='analyze_single_stock'):
-    if not user_ticker:
-        st.warning("Please enter a stock ticker.")
-    else:
-        with st.spinner(f"Analyzing {user_ticker}..."):
-            data = get_stock_data(user_ticker, is_single_stock=True)
-        if not data:
-            st.error(
-                f"Could not fetch data for {user_ticker}. Please check the ticker symbol. For Indian stocks, ensure it ends with '.NS'. The data source may also be temporarily unavailable.")
+    # --- Display Screener Results ---
+    if 'screener_results' in st.session_state:
+        st.markdown("---")
+        st.subheader("GARP Screener Results")
+        results = st.session_state.screener_results
+        if results:
+            st.success(
+                f"Analysis complete! Found **{sum(1 for r in results if r.get('is_high_conviction'))}** high-conviction GARP candidates.")
+            num_to_display = st.number_input("Number of stocks to display", min_value=1, max_value=len(results),
+                                             value=min(10, len(results)), step=1, key="screener_display_num")
+            for stock in results[:num_to_display]:
+                display_stock_analysis(stock)
         else:
-            # --- MODIFIED: Dynamic P/E logic starts here ---
-            g, v, q, m = 0, 0, 0, 0  # growth, value, quality, momentum points
+            st.warning(
+                "No stocks were found or analyzed in the selected universe. This could be a data provider issue.")
 
-            # Get the sector and its benchmark P/E
-            sector = data['fundamentals'].get('sector')
-            benchmark_pe = SECTOR_PE_BENCHMARKS.get(sector, SECTOR_PE_BENCHMARKS['Default'])
+with analyzer_tab:
+    st.header("Analyze a Single Stock")
+    user_ticker = st.text_input("Enter a stock ticker (e.g., RELIANCE.NS)", key="single_ticker").upper()
+    if st.button("🔍 Analyze Stock", key='analyze_single'):
+        if user_ticker:
+            with st.spinner(f"Analyzing {user_ticker}..."):
+                data = get_stock_data(user_ticker)
+            if data:
+                data['fundamental_score'] = calculate_fundamental_score(data['fundamentals'])
+                data['technical_score'] = calculate_technical_score(data['technicals'])
+                data['is_high_conviction'] = data['fundamental_score'] >= 65 and data['technical_score'] >= 65
+                st.session_state.single_stock_result = data
+            else:
+                st.error(f"Could not retrieve data for {user_ticker}. Please check the ticker symbol.")
+        else:
+            st.warning("Please enter a ticker to analyze.")
 
-            st.info(f"Analyzing based on the '{sector}' sector benchmark P/E of {benchmark_pe}.")
+    # --- Display Single Stock Analyzer Results ---
+    if 'single_stock_result' in st.session_state:
+        st.markdown("---")
+        st.subheader(f"Single Stock Analysis: {st.session_state.single_stock_result['ticker']}")
+        display_stock_analysis(st.session_state.single_stock_result)
 
-            # Value check against dynamic benchmark
-            if data['fundamentals']['trailing_pe'] is not None and data['fundamentals']['trailing_pe'] < benchmark_pe:
-                v = 1
-
-            # Other checks remain the same
-            if data['fundamentals']['net_income_growth'] is not None and data['fundamentals'][
-                'net_income_growth'] > 0.15: g = 1
-            if data['fundamentals']['profit_margins'] is not None and data['fundamentals'][
-                'profit_margins'] > 0.10: q = 1
-            if data['fundamentals']['momentum_6m'] is not None and data['fundamentals']['momentum_6m'] > 0.20: m = 1
-
-            fund_score = 0
-            market_cap = data['fundamentals']['market_cap']
-            if market_cap and market_cap > LARGE_CAP_THRESHOLD:  # Large Cap
-                fund_score = (q * 40) + (v * 30) + (g * 15) + (m * 15)
-            else:  # Mid & Small Cap
-                fund_score = (g * 40) + (m * 30) + (v * 15) + (q * 15)
-
-            tech_score = calculate_technical_score(data['technicals'])
-            stock_info = {"fundamental_score": fund_score, "technical_score": tech_score, **data['fundamentals'],
-                          **data['technicals'], **data['info']}
-            stock_info['company_name'] = data['info'].get('shortName', user_ticker)
-
-            st.markdown("---")
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                st.metric(f"**{stock_info['company_name']} ({data['ticker']})**", f"₹{stock_info['current_price']:.2f}")
-                st.markdown(f"**Fundamental Score: {stock_info['fundamental_score']} / 100**")
-                st.markdown(f"**Technical Score: {stock_info['technical_score']} / 100**")
-                if stock_info['fundamental_score'] >= 65 and stock_info['technical_score'] >= 65:
-                    st.markdown("🎯 **High Conviction**")
-            with col2:
-                st.markdown("**Model Summary & Interpretation:**")
-                st.info(generate_description(stock_info))
-                with st.expander("View Detailed Metrics"):
-                    fund_col, tech_col = st.columns(2)
-                    with fund_col:
-                        st.markdown("**Fundamental Data**")
-                        st.text(f"Market Cap: ₹{(stock_info['market_cap'] or 0) / 1e7:,.0f} Cr")
-                        st.text(f"Net Income Growth (YoY): {stock_info['net_income_growth'] * 100:.2f}%" if stock_info[
-                                                                                                                'net_income_growth'] is not None else "N/A")
-                        st.text(f"Trailing P/E Ratio: {stock_info['trailing_pe']:.2f}" if stock_info[
-                                                                                              'trailing_pe'] is not None else "N/A")
-                        st.text(f"Profit Margins: {stock_info['profit_margins'] * 100:.2f}%" if stock_info[
-                                                                                                    'profit_margins'] is not None else "N/A")
-                        st.text(f"6-Month Momentum: {stock_info['momentum_6m'] * 100:.2f}%" if stock_info[
-                                                                                                   'momentum_6m'] is not None else "N/A")
-                    with tech_col:
-                        st.markdown("**Technical Data**")
-                        st.text(
-                            f"Price vs 50D SMA: {'Above' if stock_info['current_price'] > stock_info['sma_50'] else 'Below'}")
-                        st.text(
-                            f"Price vs 200D SMA: {'Above' if stock_info['current_price'] > stock_info['sma_200'] else 'Below'}")
-                        st.text(f"14D RSI: {stock_info['rsi_14']:.2f}")
-                        st.text(f"14D ADX: {stock_info['adx_14']:.2f}")
-                        st.text(
-                            f"Volume vs 50D Avg: {'High' if stock_info['current_volume'] > stock_info['avg_volume_50d'] else 'Low'}")
