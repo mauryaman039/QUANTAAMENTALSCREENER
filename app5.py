@@ -10,6 +10,7 @@ import yfinance as yf
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime
+import time # <-- 1. ADD THIS IMPORT
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -74,8 +75,14 @@ def calculate_rsi(data, period=14):
     delta = data.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    
     rs = gain / loss
-    return 100 - (100 / (1 + rs))
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Handle NaN (e.g., 0/0) by setting a neutral 50 RSI
+    rsi = rsi.fillna(50) 
+    
+    return rsi
 
 
 def plot_technical_chart(hist):
@@ -375,6 +382,10 @@ with screener_tab:
                     data['technical_score'] = calculate_technical_score(data['technicals'])
                     data['is_high_conviction'] = data['fundamental_score'] >= 65 and data['technical_score'] >= 65
                     all_results.append(data)
+                
+                # 2. ADD THIS DELAY TO PREVENT RATE-LIMITING
+                time.sleep(0.2) 
+
                 progress_bar.progress((i + 1) / len(tickers_to_scan), f"Analyzing {ticker}")
             st.session_state.screener_results = sorted(all_results, key=lambda x: (
             x.get('is_high_conviction', False), x.get('fundamental_score', 0) + x.get('technical_score', 0)),
