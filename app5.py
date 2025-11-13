@@ -391,18 +391,28 @@ with screener_tab:
             x.get('is_high_conviction', False), x.get('fundamental_score', 0) + x.get('technical_score', 0)),
                                                        reverse=True)
 
+    # --- Display Screener Results (MODIFIED LOGIC) ---
     if 'screener_results' in st.session_state:
         st.markdown("---")
         st.subheader("GARP Screener Results")
         results = st.session_state.screener_results
+        
+        # ALWAYS show the success message, even if 0 are found
+        high_conviction_count = sum(1 for r in results if r.get('is_high_conviction'))
+        st.success(f"Analysis complete! Found **{high_conviction_count}** high-conviction GARP candidates.")
+
         if results:
-            st.success(f"Analysis complete! Found **{sum(1 for r in results if r.get('is_high_conviction'))}** high-conviction GARP candidates.")
-            num_to_display = st.number_input("Number of stocks to display", min_value=1, max_value=len(results), value=min(10, len(results)), step=1, key="screener_display_num")
+            # Only show the display options if there are results
+            num_to_display = st.number_input("Number of stocks to display", min_value=1, max_value=len(results),
+                                             value=min(10, len(results)), step=1, key="screener_display_num")
+            
+            # Display the top N stocks from the sorted list
             for stock in results[:num_to_display]:
                 if stock.get("warning"): st.warning(f"**{stock['ticker']}:** {stock['warning']}")
                 display_stock_analysis(stock)
         else:
-            st.warning("No stocks in the selected universe passed the initial data quality checks.")
+            # This message now ONLY shows if no stocks could be analyzed at all
+            st.warning("No stocks in the selected universe could be analyzed. This may be a data provider issue.")
 
 with analyzer_tab:
     st.header("Analyze a Single Stock")
