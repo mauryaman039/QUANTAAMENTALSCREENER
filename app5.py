@@ -383,8 +383,8 @@ with screener_tab:
                     data['is_high_conviction'] = data['fundamental_score'] >= 65 and data['technical_score'] >= 65
                     all_results.append(data)
                 
-                # 2. ADD THIS DELAY TO PREVENT RATE-LIMITING
-                time.sleep(0.2) 
+                # 2. INCREASED THIS DELAY TO PREVENT RATE-LIMITING
+                time.sleep(0.5) 
 
                 progress_bar.progress((i + 1) / len(tickers_to_scan), f"Analyzing {ticker}")
             st.session_state.screener_results = sorted(all_results, key=lambda x: (
