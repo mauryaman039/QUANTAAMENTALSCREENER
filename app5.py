@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
+import requests
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -12,6 +13,14 @@ st.set_page_config(
     page_icon="🎯",
     layout="wide"
 )
+
+# --- SHARED API SESSION (Reduces Rate Limiting) ---
+if 'api_session' not in st.session_state:
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    })
+    st.session_state.api_session = session
 
 # --- PORTFOLIO STATE TRACKING ---
 if 'portfolio' not in st.session_state:
@@ -58,7 +67,7 @@ STOCK_UNIVERSES = {
     "Dow Jones 30 (US)": ['AAPL', 'AMGN', 'AXP', 'BA', 'CAT', 'CRM', 'CSCO', 'CVX', 'DIS', 'DOW', 'GS', 'HD', 'HON', 'IBM', 'INTC', 'JNJ', 'JPM', 'KO', 'MCD', 'MMM', 'MRK', 'MSFT', 'NKE', 'PG', 'TRV', 'UNH', 'V', 'VZ', 'WBA', 'WMT']
 }
 
-# --- Resilient Data Helpers ---
+# --- Shared Logic Functions ---
 
 def get_financial_row(df, keys):
     """Searches through possible financial keys to return a valid data series."""
@@ -69,7 +78,7 @@ def get_financial_row(df, keys):
     return pd.Series()
 
 def calculate_dynamic_cagr(series, max_periods=5):
-    """Calculates CAGR based on available data. Returns (rate, years_used)."""
+    """Calculates CAGR and returns the (rate, years_used) tuple."""
     if series.empty or len(series) < 2: return 0.0, 0
     series = series.sort_index(ascending=False)
     actual_periods = min(max_periods, len(series) - 1)
@@ -83,15 +92,20 @@ def calculate_dynamic_cagr(series, max_periods=5):
 @st.cache_data(ttl=3600)
 def fetch_comprehensive_data(ticker):
     try:
-        stock = yf.Ticker(ticker)
+        stock = yf.Ticker(ticker, session=st.session_state.api_session)
         # Fetch metadata with safety
         info = stock.info if stock.info else {}
         
-        hist = stock.history(period="2y")
-        if hist.empty: return None
-        current_price = hist['Close'].iloc[-1]
+        # Fallback to fast_info for critical CMP if .info is restricted
+        try:
+            current_price = info.get('currentPrice') or stock.fast_info.get('last_price')
+        except:
+            hist = stock.history(period="5d")
+            current_price = hist['Close'].iloc[-1] if not hist.empty else None
 
-        # Resilient Financials Parsing
+        if current_price is None: return None
+
+        # resilient Financials Parsing
         income = stock.income_stmt
         if income.empty: income = stock.financials
         
@@ -147,8 +161,11 @@ def fetch_comprehensive_data(ticker):
         # --- RESILIENT MARKET CAP FETCHING ---
         m_cap = info.get('marketCap')
         if not m_cap:
-            shares = info.get('sharesOutstanding') or info.get('impliedSharesOutstanding')
-            m_cap = (shares * current_price) if shares else 50_000_000_000 # Default fallback
+            try:
+                m_cap = stock.fast_info.get('market_cap')
+            except:
+                shares = info.get('sharesOutstanding') or info.get('impliedSharesOutstanding')
+                m_cap = (shares * current_price) if shares else 50_000_000_000 # Neutral default
 
         m_cap_inr = m_cap if is_india else m_cap * 83
         if m_cap_inr < 100_000_000_000: # Small (10k Cr)
@@ -173,19 +190,20 @@ def fetch_comprehensive_data(ticker):
         peg_manual = pe_ttm / (max(0.01, eps_cagr * 100))
 
         # 4. TECHNICALS
-        sma_50 = hist['Close'].rolling(50).mean().iloc[-1] if len(hist) >= 50 else current_price
-        sma_200 = hist['Close'].rolling(200).mean().iloc[-1] if len(hist) >= 200 else current_price
+        hist_chart = stock.history(period="2y")
+        sma_50 = hist_chart['Close'].rolling(50).mean().iloc[-1] if len(hist_chart) >= 50 else current_price
+        sma_200 = hist_chart['Close'].rolling(200).mean().iloc[-1] if len(hist_chart) >= 200 else current_price
         
-        delta = hist['Close'].diff()
+        delta = hist_chart['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rsi = 100 - (100 / (1 + (gain / loss).iloc[-1])) if not gain.empty and not pd.isna(loss.iloc[-1]) and loss.iloc[-1] != 0 else 50
 
         rel_strength = True
         try:
-            idx_hist = yf.Ticker(main_index).history(period="1y")['Close']
-            if len(hist) > 126 and len(idx_hist) > 126:
-                stock_perf_6m = (current_price / hist['Close'].iloc[-126]) - 1
+            idx_hist = yf.Ticker(main_index, session=st.session_state.api_session).history(period="1y")['Close']
+            if len(hist_chart) > 126 and len(idx_hist) > 126:
+                stock_perf_6m = (current_price / hist_chart['Close'].iloc[-126]) - 1
                 idx_perf_6m = (idx_hist.iloc[-1] / idx_hist.iloc[-126]) - 1
                 rel_strength = stock_perf_6m > idx_perf_6m
         except: pass
@@ -204,7 +222,7 @@ def fetch_comprehensive_data(ticker):
                 "sma_50": sma_50, "sma_200": sma_200, "rsi": rsi, "rel_strength": rel_strength,
                 "fair_pe_logic": fair_pe_logic, "cap_factor": cap_factor, "cap_type": cap_type
             },
-            "raw": {"hist": hist}
+            "raw": {"hist": hist_chart}
         }
     except Exception: return None
 
@@ -350,24 +368,32 @@ with tab_screener:
                             help="Select a market benchmark to scan.")
     if st.button("🚀 Execute Global Quant Scan", type="primary"):
         results = []
-        progress = st.progress(0, "Initiating Scan...")
         tickers = STOCK_UNIVERSES[universe]
+        progress_bar = st.progress(0)
+        status_text = st.empty()
         
         for i, t in enumerate(tickers):
             try:
+                status_text.text(f"Processing {t} ({i+1}/{len(tickers)})...")
                 data = fetch_comprehensive_data(t)
-                if data: results.append(data)
-                progress.progress((i + 1) / len(tickers), f"Processing {t}...")
-                # Optimized Ticker Loop: pause every 10 tickers to mitigate rate limits
-                if (i+1) % 10 == 0: time.sleep(0.5)
+                if data: 
+                    results.append(data)
+                
+                progress_bar.progress((i + 1) / len(tickers))
+                
+                # Dynamic delay to prevent rate limits
+                if (i+1) % 5 == 0: time.sleep(1.0)
             except Exception:
                 continue
         
+        status_text.empty()
+        
         if results:
             results = sorted(results, key=lambda x: get_pro_score(x), reverse=True)
-            for stock in results[:25]: display_pro_card(stock)
+            st.success(f"Successfully analyzed {len(results)}/{len(tickers)} stocks.")
+            for stock in results: display_pro_card(stock)
         else:
-            st.warning("Data fetch failed. This usually happens due to API rate limits. Please try a smaller universe or search a single ticker in the Analyzer tab.")
+            st.error("Data fetch failed. This usually happens due to API rate limits from Yahoo Finance. Please try a smaller universe or search a single ticker in the Analyzer tab.")
 
 with tab_analyzer:
     search_ticker = st.text_input("Ticker Search (e.g. NVDA, AAPL, RELIANCE.NS)").upper()
@@ -376,4 +402,4 @@ with tab_analyzer:
             with st.spinner(f"Analyzing {search_ticker}..."):
                 data = fetch_comprehensive_data(search_ticker)
                 if data: display_pro_card(data)
-                else: st.error("Analysis Failed. Please verify the ticker suffix (e.g. .NS for India).")
+                else: st.error("Analysis Failed. Please verify the ticker symbol and internet connection.")
