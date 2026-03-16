@@ -161,7 +161,7 @@ def fetch_comprehensive_data(ticker):
             cap_factor, cap_type = 0.45, "Mega Cap"
             
         applied_growth = eps_cagr * cap_factor
-        safe_growth = max(0.0, applied_growth) # Removed 30% safety cap
+        safe_growth = max(0.0, applied_growth) 
 
         fair_pe_logic = min(ind_pe, (eps_cagr * 100) * 1.8)
         if fair_pe_logic < 10: fair_pe_logic = 10
@@ -274,14 +274,26 @@ def display_pro_card(data):
                 st.markdown("#### 🔹 Growth")
                 eps_yr_info = f" (using {m['eps_years']} yrs)" if m['eps_years'] < 5 else ""
                 rev_yr_info = f" (using {m['rev_years']} yrs)" if m['rev_years'] < 5 else ""
-                st.markdown(f"**EPS CAGR (5Y):** {m['eps_cagr'] * 100:.1f}%{eps_yr_info}")
-                st.markdown(f"**Rev CAGR (5Y):** {m['rev_cagr'] * 100:.1f}%{rev_yr_info}")
-                st.markdown(f"**Profit Trend:** {'✅ Increasing' if m['net_profit_increasing'] else '❌ Weak'}")
+                st.write(f"**EPS CAGR (5Y):** {m['eps_cagr'] * 100:.1f}%{eps_yr_info}", help="Unadjusted historical earnings growth rate.")
+                st.write(f"**Rev CAGR (5Y):** {m['rev_cagr'] * 100:.1f}%{rev_yr_info}", help="Historical top-line revenue expansion.")
+                st.write(f"**Profit Trend:** {'✅ Increasing' if m['net_profit_increasing'] else '❌ Weak'}", help="Trailing net profit trajectory.")
             with q1:
                 st.markdown("#### 🔹 Quality")
-                st.markdown(f"**ROCE/ROE (Avg):** {((m['roce'] + m['roe']) / 2) * 100:.1f}%")
-                st.markdown(f"**Debt to Equity:** {m['d_e']:.2f}")
+                st.write(f"**ROCE/ROE (Avg):** {((m['roce'] + m['roe']) / 2) * 100:.1f}%", help="Capital efficiency hurdle. Target >20%.")
+                st.write(f"**Debt to Equity:** {m['d_e']:.2f}", help="Financial leverage. Lower is safer (<0.5).")
             
+            st.divider()
+            v1, t1 = st.columns(2)
+            with v1:
+                st.markdown("#### 🔹 Valuation")
+                st.write(f"**Industry PE Avg:** {m['ind_pe']:.1f}x", help="The average price multiple for the peer sector.")
+                st.write(f"**Manual PEG:** {m['peg']:.2f}", help="Price to Growth ratio. <1.2 is target.")
+            with t1:
+                st.markdown("#### 🔹 Technicals")
+                idx_name = "Nifty 50" if data['is_india'] else "S&P 500"
+                st.write(f"**RS Index:** {'Outperforming' if m['rel_strength'] else 'Lagging'}", help=f"Strength vs {idx_name} over 6 months.")
+                st.write(f"**MA Alignment:** {'✅ Bullish' if m['sma_50'] > m['sma_200'] else '❌ Bearish'}", help="Golden Cross: 50 SMA > 200 SMA.")
+
             st.divider()
             fig = go.Figure()
             hist_raw = data['raw']['hist']
