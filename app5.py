@@ -58,7 +58,7 @@ STOCK_UNIVERSES = {
     "Dow Jones 30 (US)": ['AAPL', 'AMGN', 'AXP', 'BA', 'CAT', 'CRM', 'CSCO', 'CVX', 'DIS', 'DOW', 'GS', 'HD', 'HON', 'IBM', 'INTC', 'JNJ', 'JPM', 'KO', 'MCD', 'MMM', 'MRK', 'MSFT', 'NKE', 'PG', 'TRV', 'UNH', 'V', 'VZ', 'WBA', 'WMT']
 }
 
-# --- Shared Logic Functions ---
+# --- Resilient Data Helpers ---
 
 def get_financial_row(df, keys):
     """Searches through possible financial keys to return a valid data series."""
@@ -69,13 +69,13 @@ def get_financial_row(df, keys):
     return pd.Series()
 
 def calculate_dynamic_cagr(series, max_periods=5):
-    """Calculates CAGR and returns the (rate, years_used) tuple."""
+    """Calculates CAGR based on available data with zero-division protection. Returns (rate, years_used)."""
     if series.empty or len(series) < 2: return 0.0, 0
     series = series.sort_index(ascending=False)
     actual_periods = min(max_periods, len(series) - 1)
     start_val, end_val = series.iloc[actual_periods], series.iloc[0]
     if start_val <= 0: 
-        # Fallback for negative start values
+        # Fallback for zero or negative start values
         rate = (end_val - start_val) / max(1, abs(start_val)) / actual_periods
         return float(rate), int(actual_periods)
     rate = ((end_val / start_val) ** (1 / actual_periods)) - 1
@@ -85,14 +85,16 @@ def calculate_dynamic_cagr(series, max_periods=5):
 def fetch_comprehensive_data(ticker):
     try:
         stock = yf.Ticker(ticker)
-        # Fetch data chunks with safety
+        # Fetch data with safety
         info = stock.info if stock.info else {}
         
+        # Resilient History fetching
         hist = stock.history(period="2y")
-        if hist.empty: return None
+        if hist.empty or len(hist) < 20:
+            return None
         current_price = hist['Close'].iloc[-1]
 
-        # resilient Financials Parsing
+        # Financials Parsing with fallbacks
         income = stock.income_stmt
         if income.empty: income = stock.financials
         
@@ -162,7 +164,7 @@ def fetch_comprehensive_data(ticker):
             cap_factor, cap_type = 0.45, "Mega Cap"
             
         adjusted_growth = eps_cagr * cap_factor
-        safe_growth = max(0.0, adjusted_growth) # Removed the 30% safety cap
+        safe_growth = max(0.0, adjusted_growth) 
 
         fair_pe_logic = min(ind_pe, (eps_cagr * 100) * 1.8)
         if fair_pe_logic < 10: fair_pe_logic = 10
@@ -320,10 +322,14 @@ with tab_screener:
         tickers = STOCK_UNIVERSES[universe]
         
         for i, t in enumerate(tickers):
-            data = fetch_comprehensive_data(t)
-            if data: results.append(data)
-            progress.progress((i + 1) / len(tickers), f"Processing {t}...")
-            if (i+1) % 10 == 0: time.sleep(0.5)
+            try:
+                data = fetch_comprehensive_data(t)
+                if data: results.append(data)
+                progress.progress((i + 1) / len(tickers), f"Processing {t}...")
+                # Optimized Ticker Loop: pause every 10 tickers to mitigate rate limits
+                if (i+1) % 10 == 0: time.sleep(0.5)
+            except Exception:
+                continue
         
         if results:
             results = sorted(results, key=lambda x: get_pro_score(x), reverse=True)
