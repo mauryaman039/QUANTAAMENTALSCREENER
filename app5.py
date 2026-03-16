@@ -58,7 +58,7 @@ STOCK_UNIVERSES = {
     "Dow Jones 30 (US)": ['AAPL', 'AMGN', 'AXP', 'BA', 'CAT', 'CRM', 'CSCO', 'CVX', 'DIS', 'DOW', 'GS', 'HD', 'HON', 'IBM', 'INTC', 'JNJ', 'JPM', 'KO', 'MCD', 'MMM', 'MRK', 'MSFT', 'NKE', 'PG', 'TRV', 'UNH', 'V', 'VZ', 'WBA', 'WMT']
 }
 
-# --- Resilient Data Helpers ---
+# --- Shared Logic Functions ---
 
 def get_financial_row(df, keys):
     """Searches through possible financial keys to return a valid data series."""
@@ -69,7 +69,7 @@ def get_financial_row(df, keys):
     return pd.Series()
 
 def calculate_dynamic_cagr(series, max_periods=5):
-    """Calculates CAGR based on available data with zero-division protection. Returns (rate, years_used)."""
+    """Calculates CAGR and returns the (rate, years_used) tuple."""
     if series.empty or len(series) < 2: return 0.0, 0
     series = series.sort_index(ascending=False)
     actual_periods = min(max_periods, len(series) - 1)
@@ -85,16 +85,14 @@ def calculate_dynamic_cagr(series, max_periods=5):
 def fetch_comprehensive_data(ticker):
     try:
         stock = yf.Ticker(ticker)
-        # Fetch data with safety
+        # Fetch data chunks with safety
         info = stock.info if stock.info else {}
         
-        # Resilient History fetching
         hist = stock.history(period="2y")
-        if hist.empty or len(hist) < 20:
-            return None
+        if hist.empty: return None
         current_price = hist['Close'].iloc[-1]
 
-        # Financials Parsing with fallbacks
+        # resilient Financials Parsing
         income = stock.income_stmt
         if income.empty: income = stock.financials
         
@@ -300,22 +298,45 @@ show_disclaimers()
 tab_about, tab_screener, tab_analyzer = st.tabs(["About Strategy", "Screener", "Single Stock Analyzer"])
 
 with tab_about:
-    st.header("Proprietary Quantamental Framework")
+    st.header("The Institutional Quantamental Framework")
     st.markdown("""
-    This terminal identifies high-quality growth stocks while filtering out overvalued "growth traps."
-    
-    ### 🔄 Market Cap Moderation
-    We moderate historical growth for forward projections based on size:
-    - **Small Cap:** 75% Factor | **Mid Cap:** 65% Factor | **Large Cap:** 55% Factor | **Mega Cap:** 45% Factor
-    
-    ### 🛡️ Resilience Logic
-    - **Market Cap Fallback:** Manual calculation (Shares × Price) if metadata is missing.
-    - **EPS Robustness:** Multiple fallback checks for TTM earnings.
-    - **Fuzzy Financial Parsing:** Improved parsing of income statements across global exchanges.
+    This terminal uses a proprietary **100-Point Framework** designed to identify high-quality growth stocks while filtering out overvalued "growth traps."
+
+    ### 📊 Detailed Scoring Roadmap
+
+    #### 1. Growth (30 Points) - Tiered Rewards
+    * **EPS CAGR (Max 12 pts):** Rewards high velocity growth. >25% gets full points.
+    * **Revenue CAGR (Max 10 pts):** Confirms operational growth vs financial engineering.
+    * **Profit Trajectory (Max 8 pts):** Simple check if the absolute bottom line is expanding.
+
+    #### 2. Quality (20 Points) - Efficiency Hurdles
+    * **Capital Efficiency (10 pts):** Uses Average of ROCE and ROE. We seek >20% returns.
+    * **Solvency (10 pts):** Debt-to-Equity is a safety filter. Low debt (<0.5) is prioritized.
+
+    #### 3. Valuation (30 Points) - The Bubble Filter
+    * **Intrinsic Value Logic:** We moderate historical growth based on **Market Cap Category** (Small: 0.75, Mid: 0.65, Large: 0.55, Mega: 0.45). Fair P/E is anchored at **1.8x the growth rate**.
+    * **PEG Punishment:** PEG > 2.5 results in an automatic **10-point loss**.
+
+    #### 4. Technicals (20 Points) - Institutional Confirmation
+    * **Relative Strength (RS):** Must outperform the native index (Nifty/S&P) over 6 months.
+    * **Trend Alignment:** Price and 50DMA must reside above the 200DMA.
+
+    ---
+    ### 🔄 Re-Rating & Exit Protocols
+
+    #### 🔹 Technical Freeze (The 30-Day Rule)
+    Most retail investors sell too early due to short-term volatility. Once you "Enter" a stock:
+    1.  **Freeze for 30 Trading Days:** Ignore RSI, MACD, and noise.
+    2.  **State Tracking:** Use the 'Mark as Entered' button below results to track the freeze period.
+
+    #### 🔹 Hard Exit Rules
+    1.  **Immediate Exit:** -15% hard stop-loss.
+    2.  **Structural Breakdown:** Exit if price stays below 200DMA for 10+ consecutive days (after the 30-day freeze).
     """)
 
 with tab_screener:
-    universe = st.selectbox("Universe Selection", options=list(STOCK_UNIVERSES.keys()))
+    universe = st.selectbox("Universe Selection", options=list(STOCK_UNIVERSES.keys()),
+                            help="Select a market benchmark to scan.")
     if st.button("🚀 Execute Global Quant Scan", type="primary"):
         results = []
         progress = st.progress(0, "Initiating Scan...")
@@ -326,7 +347,7 @@ with tab_screener:
                 data = fetch_comprehensive_data(t)
                 if data: results.append(data)
                 progress.progress((i + 1) / len(tickers), f"Processing {t}...")
-                # Optimized Ticker Loop: pause every 10 tickers to mitigate rate limits
+                # pause every 10 tickers to mitigate rate limits
                 if (i+1) % 10 == 0: time.sleep(0.5)
             except Exception:
                 continue
