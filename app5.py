@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="GARP Screener",
+    page_title="GARP Screener- Created By Maurya Chakravartula",
     page_icon="🎯",
     layout="wide"
 )
