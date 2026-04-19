@@ -415,7 +415,7 @@ def display_pro_card(data):
 
 
 # --- APP LAYOUT ---
-st.title("🎯 Institutional GARP Screener")
+st.title("🎯GARP Screener- Created By Maurya Chakravartula")
 show_disclaimers()
 tab_about, tab_screener, tab_analyzer = st.tabs(["About Strategy", "Screener", "Single Stock Analyzer"])
 
